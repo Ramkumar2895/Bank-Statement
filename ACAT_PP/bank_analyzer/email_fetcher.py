@@ -4,7 +4,6 @@ Fetch HDFC Bank InstaAlert emails from Gmail and parse transactions.
 HDFC InstaAlert emails contain:
   - Debit alerts: amount debited, to whom, balance
   - Credit alerts: amount credited, from whom, balance
-
 Requires Gmail App Password (not regular password).
 Steps to get App Password:
   1. Go to https://myaccount.google.com/security
