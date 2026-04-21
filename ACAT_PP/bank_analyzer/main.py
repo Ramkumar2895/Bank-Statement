@@ -7,8 +7,11 @@ import os
 import io
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from threading import Lock
+
+# Indian Standard Time (UTC+5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -82,7 +85,7 @@ def _auto_fetch_job():
 
     try:
         raw = fetch_hdfc_alerts(GMAIL_USER, GMAIL_APP_PASSWORD, days_back=0)
-        entry = {"time": datetime.now().strftime("%H:%M:%S"), "fetched": len(raw), "new": 0, "error": None}
+        entry = {"time": datetime.now(IST).strftime("%H:%M:%S"), "fetched": len(raw), "new": 0, "error": None}
 
         if raw:
             txns = categorize_transactions(raw)
@@ -114,7 +117,7 @@ def _auto_fetch_job():
         if entry["new"] > 0:
             logger.info("Auto-fetch: %d new transactions pending approval", entry["new"])
     except Exception as e:
-        _auto_fetch_log.append({"time": datetime.now().strftime("%H:%M:%S"), "fetched": 0, "new": 0, "error": str(e)})
+        _auto_fetch_log.append({"time": datetime.now(IST).strftime("%H:%M:%S"), "fetched": 0, "new": 0, "error": str(e)})
         logger.error("Auto-fetch error: %s", e)
 
 
@@ -406,7 +409,7 @@ async def get_balance():
     balance = _balance_info["balance"]
 
     # Subtract today's already-saved transactions
-    today_str = datetime.now().strftime("%d/%m/%y")
+    today_str = datetime.now(IST).strftime("%d/%m/%y")
     for t in get_all_transactions():
         if str(t.get("date", "")).strip() == today_str:
             balance -= float(t.get("debit", 0))
@@ -519,5 +522,5 @@ def on_shutdown():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

@@ -17,8 +17,14 @@ import imaplib
 import email
 from email.header import decode_header
 import re
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+logger = logging.getLogger("bank_analyzer")
+
+# Indian Standard Time (UTC+5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 HDFC_SENDERS = ["alerts@hdfcbank.net", "alerts@hdfcbank.bank.in"]
@@ -47,7 +53,7 @@ def fetch_hdfc_alerts(
     if last_fetch_date:
         since_date = last_fetch_date
     else:
-        since = datetime.now() - timedelta(days=days_back)
+        since = datetime.now(IST) - timedelta(days=days_back)
         since_date = since.strftime("%d-%b-%Y")
 
     # Connect to Gmail IMAP
@@ -91,7 +97,7 @@ def fetch_hdfc_alerts(
             parsed_date = email.utils.parsedate_to_datetime(email_date)
             txn_date = parsed_date.strftime("%d/%m/%y")
         except Exception:
-            txn_date = datetime.now().strftime("%d/%m/%y")
+            txn_date = datetime.now(IST).strftime("%d/%m/%y")
 
         # Get subject
         subject = _decode_subject(msg.get("Subject", ""))
@@ -307,8 +313,9 @@ def fetch_hdfc_balance(gmail_user: str, gmail_app_password: str) -> Optional[dic
 
     mail.select("inbox")
 
-    # Search today and yesterday (morning email might arrive late/early)
-    since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
+    # Search today and yesterday in IST (Render runs in UTC, HDFC sends at ~7:30 AM IST)
+    since_date = (datetime.now(IST) - timedelta(days=1)).strftime("%d-%b-%Y")
+    logger.info("Balance: searching since %s (IST now: %s)", since_date, datetime.now(IST).strftime("%Y-%m-%d %H:%M"))
 
     # Search for balance notification emails from all HDFC senders
     # Subject: "View: Account update for your HDFC Bank A/c"
@@ -321,30 +328,36 @@ def fetch_hdfc_balance(gmail_user: str, gmail_app_password: str) -> Optional[dic
                 ids.extend(message_ids[0].split())
 
     if not ids:
+        logger.warning("Balance: no emails found matching criteria (since %s)", since_date)
         mail.logout()
         return None
 
     # Get the latest balance email
+    logger.info("Balance: found %d candidate email(s)", len(ids))
     latest_id = ids[-1]
     status, msg_data = mail.fetch(latest_id, "(RFC822)")
     mail.logout()
 
     if status != "OK":
+        logger.warning("Balance: failed to fetch email id %s", latest_id)
         return None
 
     msg = email.message_from_bytes(msg_data[0][1])
     body = _get_email_body(msg)
     if not body:
+        logger.warning("Balance: email body is empty")
         return None
 
     # Parse: "Available balance in your account ending XX3972 is Rs. INR 79,542.80 as on 14-APR-26"
     text = re.sub(r"\s+", " ", body.replace("\n", " ").replace("\r", " "))
+    logger.info("Balance email body (first 500 chars): %s", text[:500])
 
     bal_match = re.search(
         r"(?:available|avl)[\s.]*balance.*?(?:Rs\.?\s*(?:INR\s*)?|INR\s*)([\d,]+\.?\d*)\s*as\s+(?:of|on)\s+(\d{2}-[A-Za-z]{3}-\d{2,4})",
         text, re.IGNORECASE
     )
     if not bal_match:
+        logger.warning("Balance: regex did not match. Full text: %s", text[:1000])
         return None
 
     balance = float(bal_match.group(1).replace(",", ""))
