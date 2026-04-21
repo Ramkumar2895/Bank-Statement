@@ -26,7 +26,6 @@ logger = logging.getLogger("bank_analyzer")
 # Indian Standard Time (UTC+5:30)
 IST = timezone(timedelta(hours=5, minutes=30))
 
-
 HDFC_SENDERS = ["alerts@hdfcbank.net", "alerts@hdfcbank.bank.in"]
 IMAP_SERVER = "imap.gmail.com"
 IMAP_PORT = 993
