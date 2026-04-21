@@ -586,46 +586,7 @@
         }
         @keyframes badgePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 
-        /* Gmail bar */
-        #gmailConfigured {
-            display: flex; align-items: center; gap: 4px;
-        }
-        .gmail-bar {
-            display: flex; align-items: center;
-            font-size: 0.82em;
-        }
-        .gmail-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: #94a3b8; }
-        .gmail-status-dot.active { background: #10b981; animation: dotPulse 2s infinite; }
-        @keyframes dotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .gmail-status-text { color: var(--text-muted); margin: 0 10px; }
-        .btn-gmail-settings { background: none; border: none; cursor: pointer; font-size: 1.1em; padding: 4px; }
-        .btn-gmail-setup { background: var(--bg-card); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 16px; color: var(--text-muted); cursor: pointer; font-size: 0.85em; }
-        .btn-gmail-setup:hover { border-color: var(--accent); color: var(--accent-text); }
-        .gmail-fetch-btns { display: flex; gap: 6px; margin-left: 10px; }
-        .btn-fetch-period { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); cursor: pointer; font-size: 0.8em; font-weight: 600; transition: all 0.2s; }
-        .btn-fetch-period:hover { border-color: var(--accent); background: var(--accent-light); color: var(--accent-text); }
-        .btn-fetch-period.loading { opacity: 0.6; pointer-events: none; }
-        .btn-fetch-period .fetch-result { font-weight: 400; margin-left: 4px; }
-
-        /* Gmail setup modal */
-        .gmail-modal {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10000;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .gmail-modal-content {
-            background: var(--bg-card); border-radius: 16px; padding: 24px; width: 380px;
-            max-width: 90vw; box-shadow: var(--shadow);
-        }
-        .gmail-modal-content h3 { margin-bottom: 8px; color: var(--text-heading); }
-        .gmail-form-group { margin-bottom: 12px; }
-        .gmail-form-group label { display: block; font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-        .gmail-form-group input { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 0.9em; box-sizing: border-box; }
-        .gmail-form-group input:focus { border-color: var(--accent); outline: none; }
-        .gmail-modal-actions { display: flex; gap: 8px; margin-top: 14px; }
-        .btn-gmail-save { flex: 1; padding: 10px; border: none; border-radius: 8px; background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #fff; font-weight: 600; cursor: pointer; }
-        .btn-gmail-save:hover { box-shadow: 0 4px 15px rgba(124,58,237,0.3); }
-        .btn-gmail-remove { padding: 10px 14px; border: 1px solid #ef4444; border-radius: 8px; background: none; color: #ef4444; cursor: pointer; font-size: 0.85em; }
-        .btn-gmail-cancel { padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: none; color: var(--text-muted); cursor: pointer; }
+        /* (Gmail bar removed) */
 
         /* Dashboard Styles */
         .dash-filter-bar {
@@ -659,22 +620,87 @@
             color: var(--text-muted);
             font-size: 0.85em;
         }
+
+        /* ========== MOBILE RESPONSIVE ========== */
+        @media (max-width: 768px) {
+            .container { padding: 12px; }
+            header { padding: 20px 0 6px; }
+            header h1 { font-size: 1.5em; }
+
+            .top-bar { top: 8px; right: 12px; }
+            .theme-toggle { width: 38px; height: 38px; font-size: 1.1em; }
+
+            .tab-nav { gap: 4px; padding: 4px; margin: 14px auto 20px; }
+            .tab-btn { padding: 10px 18px; font-size: 0.88em; }
+
+            .summary-cards { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+            .card { padding: 16px 12px; }
+            .card .value { font-size: 1.35em; }
+            .card .label { font-size: 0.75em; }
+
+            .charts-grid { grid-template-columns: 1fr; gap: 16px; margin-bottom: 20px; }
+            .chart-box { padding: 16px; }
+            .chart-box h3 { font-size: 1em; margin-bottom: 14px; }
+
+            .table-section { padding: 14px; margin-bottom: 20px; }
+            .filter-bar { flex-direction: column; gap: 8px; }
+            .filter-bar select, .filter-bar input { width: 100%; font-size: 0.88em; }
+            th { padding: 8px 6px; font-size: 0.75em; }
+            td { padding: 8px 6px; font-size: 0.82em; white-space: nowrap; }
+
+            .upload-section { padding: 30px 16px; }
+            .upload-section h3 { font-size: 1.05em; }
+            .upload-section svg { width: 44px; height: 44px; }
+
+            .modal { padding: 24px 18px; width: 95%; }
+            .modal h3 { font-size: 1.1em; }
+
+            .bank-btns { gap: 8px; }
+            .bank-btn { padding: 10px 20px; font-size: 0.9em; }
+
+            .cash-form { flex-direction: column; }
+            .cash-form .form-group { width: 100%; }
+            .cash-form input, .cash-form select { width: 100% !important; min-width: 0 !important; }
+            .cash-form .btn-add { width: 100%; padding: 12px; }
+            .add-cash-section { padding: 16px; }
+
+            .notif-popup { width: 95vw; max-width: 95vw; }
+            .notif-overlay { padding: 60px 10px 0 0; }
+            .pending-badge { top: 54px; right: 12px; padding: 8px 14px; font-size: 0.82em; }
+
+            .dash-filter-bar { gap: 8px; }
+            .dash-filter-bar select { padding: 8px 12px; font-size: 0.88em; }
+
+            .btn { padding: 10px 24px; font-size: 0.92em; }
+        }
+
+        @media (max-width: 480px) {
+            .container { padding: 8px; }
+            header h1 { font-size: 1.3em; }
+
+            .summary-cards { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .card { padding: 12px 8px; border-radius: 10px; }
+            .card .value { font-size: 1.15em; }
+            .card .label { font-size: 0.7em; letter-spacing: 0.5px; }
+
+            .tab-nav { margin: 10px auto 16px; }
+            .tab-btn { padding: 8px 14px; font-size: 0.82em; border-radius: 8px; }
+
+            .chart-box canvas { max-height: 250px; }
+
+            td { font-size: 0.78em; padding: 6px 4px; }
+            th { font-size: 0.7em; padding: 6px 4px; }
+            .category-badge { font-size: 0.7em; padding: 2px 6px; }
+            .category-select { font-size: 0.75em; padding: 4px 6px; }
+
+            .notif-header span { font-size: 0.92em; }
+            .notif-txn-row { font-size: 0.82em; }
+        }
     </style>
 </head>
 <body>
 
 <div class="top-bar">
-    <div id="gmailBar" class="gmail-bar">
-        <div id="gmailConfigured" style="display:none">
-            <span class="gmail-status-dot active"></span>
-            <span id="gmailUserDisplay"></span>
-            <span class="gmail-status-text" id="gmailStatusText">Auto-checking...</span>
-            <div class="gmail-fetch-btns">
-                <button class="btn-fetch-period" onclick="fetchForPeriod(0, this)">Today</button>
-            </div>
-        </div>
-        <div id="gmailNotConfigured" style="display:none"></div>
-    </div>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle Dark/Light Theme">🌙</button>
 </div>
 
@@ -1269,46 +1295,7 @@ let currentTxnIndex = 0;
 let notifCategories = [];
 
 async function refreshGmailBar() {
-    try {
-        const resp = await fetch('/gmail-config/status');
-        const data = await resp.json();
-        if (data.configured) {
-            document.getElementById('gmailConfigured').style.display = 'flex';
-            document.getElementById('gmailNotConfigured').style.display = 'none';
-            document.getElementById('gmailUserDisplay').textContent = data.gmail_user;
-            document.getElementById('gmailStatusText').textContent = data.running ? 'Auto-checking every 30s' : 'Paused';
-        } else {
-            document.getElementById('gmailConfigured').style.display = 'none';
-            document.getElementById('gmailNotConfigured').style.display = 'none';
-        }
-    } catch (e) {}
-}
-
-async function fetchForPeriod(days, btn) {
-    const origText = btn.textContent;
-    btn.classList.add('loading');
-    btn.textContent = '⏳ Fetching...';
-    try {
-        const resp = await fetch('/fetch-emails', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ days_back: days }),
-        });
-        const data = await resp.json();
-        if (data.success) {
-            const msg = data.total_saved > 0
-                ? `✅ ${data.total_saved} saved`
-                : (data.total_fetched === 0 ? '📭 None found' : `✅ ${data.skipped} already saved`);
-            btn.textContent = msg;
-            if (data.total_saved > 0) { loadDashboard(); }
-        } else {
-            btn.textContent = '❌ ' + (data.message || 'Error');
-        }
-    } catch (e) {
-        btn.textContent = '❌ Failed';
-    }
-    btn.classList.remove('loading');
-    setTimeout(() => { btn.textContent = origText; }, 3000);
+    // Gmail bar removed — status check only used for poller init
 }
 
 // ----- Pending transaction polling & popup -----
@@ -1484,7 +1471,6 @@ async function dismissCurrentTxn() {
 
 // Initialize on page load
 (async function initGmailAutoFetch() {
-    await refreshGmailBar();
     try {
         const resp = await fetch('/gmail-config/status');
         const data = await resp.json();

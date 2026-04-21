@@ -345,9 +345,6 @@ def fetch_hdfc_balance(gmail_user: str, gmail_app_password: str) -> Optional[dic
         text, re.IGNORECASE
     )
     if not bal_match:
-        import logging
-        logger = logging.getLogger("bank_analyzer")
-        logger.warning("Balance regex didn't match. Email body preview: %s", text[:500])
         return None
 
     balance = float(bal_match.group(1).replace(",", ""))
