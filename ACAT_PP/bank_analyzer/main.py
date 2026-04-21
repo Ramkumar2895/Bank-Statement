@@ -24,13 +24,9 @@ from database import (
 )
 from email_fetcher import fetch_hdfc_alerts, fetch_hdfc_balance
 
-# Load .env for Gmail credentials (for local dev only, Render uses env vars directly)
-env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-if os.path.exists(env_file):
-    load_dotenv(env_file)
-    logger.info(".env file loaded successfully")
-else:
-    logger.info("No .env file found (expected on Render - using environment variables)")
+# Get Gmail credentials from environment variables (Render sets these)
+from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
 
 GMAIL_USER = os.getenv("GMAIL_USER", "").strip()
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
@@ -38,9 +34,8 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
 logger = logging.getLogger("bank_analyzer")
 logging.basicConfig(level=logging.INFO)
 
-# Debug: Log if env vars are loaded
-logger.info("GMAIL_USER env loaded: %s", "YES" if GMAIL_USER else "NO (empty)")
-logger.info("GMAIL_APP_PASSWORD env loaded: %s", "YES (hidden)" if GMAIL_APP_PASSWORD else "NO (empty)")
+logger.info("GMAIL_USER loaded: %s", "✓" if GMAIL_USER else "✗ MISSING")
+logger.info("GMAIL_APP_PASSWORD loaded: %s", "✓" if GMAIL_APP_PASSWORD else "✗ MISSING")
 
 app = FastAPI(title="Bank Statement Analyzer")
 
