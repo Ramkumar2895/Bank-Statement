@@ -319,86 +319,86 @@ def fetch_hdfc_balance(gmail_user: str, gmail_app_password: str) -> Optional[dic
 
     # Search for balance notification emails from all HDFC senders
     # Subject: "View: Account update for your HDFC Bank A/c"
-    ids = []
+    id_set = set()
     for sender in HDFC_SENDERS:
-        for subj_term in ["Account update", "balance", "View", "Available"]:
+        for subj_term in ["Account update", "View"]:
             criteria = f'(FROM "{sender}" SINCE {since_date} SUBJECT "{subj_term}")'
             status, message_ids = mail.search(None, criteria)
             if status == "OK" and message_ids[0]:
-                ids.extend(message_ids[0].split())
+                id_set.update(message_ids[0].split())
+
+    ids = sorted(id_set, key=lambda x: int(x))
 
     if not ids:
         logger.warning("Balance: no emails found matching criteria (since %s)", since_date)
         mail.logout()
         return None
 
-    # Get the latest balance email
-    logger.info("Balance: found %d candidate email(s)", len(ids))
-    latest_id = ids[-1]
-    status, msg_data = mail.fetch(latest_id, "(RFC822)")
-    mail.logout()
+    logger.info("Balance: found %d candidate email(s), scanning for balance email...", len(ids))
 
-    if status != "OK":
-        logger.warning("Balance: failed to fetch email id %s", latest_id)
-        return None
-
-    msg = email.message_from_bytes(msg_data[0][1])
-    body = _get_email_body(msg)
-    if not body:
-        logger.warning("Balance: email body is empty")
-        return None
-
-    # Parse balance from email body
-    text = re.sub(r"\s+", " ", body.replace("\n", " ").replace("\r", " "))
-    logger.info("Balance email body (first 500 chars): %s", text[:500])
-
-    # Try multiple regex patterns to handle format variations
-    bal_match = None
+    # Regex patterns to match balance text
     patterns = [
-        # Pattern 1: "Available balance ... is Rs. INR 79,542.80 as on 14-APR-26"
         r"(?:available|avl)[\s.]*balance.*?(?:Rs\.?\s*(?:INR\s*)?|INR\s*)([\d,]+\.?\d*)\s*as\s+(?:of|on)\s+(\d{2}-[A-Za-z]{3}-\d{2,4})",
-        # Pattern 2: "Your available balance is Rs. 79542.80"
-        r"(?:your\s+)?(?:available|avl)[\s.]*balance\s+(?:is|:)\s*(?:Rs\.?\s*(?:INR\s*)?|INR\s*)?([\d,]+\.?\d*)",
-        # Pattern 3: More flexible — just find "balance" followed by amount
-        r"balance.*?(?:Rs\.?\s*(?:INR\s*)?|INR\s*)([\d,]+\.?\d*)",
+        r"(?:available|avl)[\s.]*balance.*?(?:Rs\.?\s*(?:INR\s*)?|INR\s*)([\d,]+\.?\d*)",
     ]
 
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            bal_match = match
-            logger.info("Balance: matched pattern: %s", pattern[:80])
-            break
+    # Iterate from newest to oldest, find the one with "available balance"
+    for msg_id in reversed(ids):
+        status, msg_data = mail.fetch(msg_id, "(RFC822)")
+        if status != "OK":
+            continue
 
-    if not bal_match:
-        logger.warning("Balance: no regex pattern matched. Full text: %s", text[:1000])
-        return None
+        msg = email.message_from_bytes(msg_data[0][1])
+        body = _get_email_body(msg)
+        if not body:
+            continue
 
-    balance = float(bal_match.group(1).replace(",", ""))
+        text = re.sub(r"\s+", " ", body.replace("\n", " ").replace("\r", " "))
 
-    # Try to extract date (may be in group 2 if pattern 1 matched, else fallback)
-    date_str = None
-    if bal_match.lastindex and bal_match.lastindex >= 2:
-        date_str = bal_match.group(2)
+        # Skip transaction alerts — only want the daily balance summary
+        if "available balance" not in text.lower():
+            continue
 
-    if not date_str:
-        date_match = re.search(r"(\d{2}-[A-Za-z]{3}-\d{2,4})", text)
-        if date_match:
-            date_str = date_match.group(1)
-        else:
-            date_str = datetime.now(IST).strftime("%d-%b-%y").upper()
+        logger.info("Balance email found (id %s). Body: %s", msg_id, text[:300])
 
-    # Parse email timestamp
-    email_date = msg.get("Date", "")
-    try:
-        timestamp = email.utils.parsedate_to_datetime(email_date).isoformat()
-    except Exception:
-        timestamp = datetime.now(IST).isoformat()
+        bal_match = None
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                bal_match = match
+                break
 
-    logger.info("Balance extracted: ₹%.2f on %s", balance, date_str)
+        if not bal_match:
+            logger.warning("Balance: 'available balance' found but regex failed. Text: %s", text[:500])
+            continue
 
-    return {
-        "balance": balance,
-        "date": date_str,
-        "timestamp": timestamp,
-    }
+        balance = float(bal_match.group(1).replace(",", ""))
+
+        # Extract date from group 2 if present, else search body, else use IST today
+        date_str = None
+        if bal_match.lastindex and bal_match.lastindex >= 2:
+            date_str = bal_match.group(2)
+        if not date_str:
+            date_match = re.search(r"(\d{2}-[A-Za-z]{3}-\d{2,4})", text)
+            if date_match:
+                date_str = date_match.group(1)
+            else:
+                date_str = datetime.now(IST).strftime("%d-%b-%y").upper()
+
+        email_date = msg.get("Date", "")
+        try:
+            timestamp = email.utils.parsedate_to_datetime(email_date).isoformat()
+        except Exception:
+            timestamp = datetime.now(IST).isoformat()
+
+        logger.info("Balance extracted: ₹%.2f on %s", balance, date_str)
+        mail.logout()
+        return {
+            "balance": balance,
+            "date": date_str,
+            "timestamp": timestamp,
+        }
+
+    logger.warning("Balance: none of %d emails contained 'available balance'", len(ids))
+    mail.logout()
+    return None
