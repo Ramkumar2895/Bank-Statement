@@ -24,18 +24,13 @@ from database import (
 )
 from email_fetcher import fetch_hdfc_alerts, fetch_hdfc_balance
 
-# Get Gmail credentials from environment variables (Render sets these)
-from dotenv import load_dotenv
-from apscheduler.schedulers.background import BackgroundScheduler
-
+# Load .env for Gmail credentials
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 GMAIL_USER = os.getenv("GMAIL_USER", "").strip()
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
 
 logger = logging.getLogger("bank_analyzer")
 logging.basicConfig(level=logging.INFO)
-
-logger.info("GMAIL_USER loaded: %s", "✓" if GMAIL_USER else "✗ MISSING")
-logger.info("GMAIL_APP_PASSWORD loaded: %s", "✓" if GMAIL_APP_PASSWORD else "✗ MISSING")
 
 app = FastAPI(title="Bank Statement Analyzer")
 
@@ -407,9 +402,7 @@ async def gmail_status():
 @app.get("/balance")
 async def get_balance():
     """Return current available balance from HDFC morning email, adjusted by today's transactions."""
-    logger.info("get_balance() called. _balance_info: %s", "SET" if _balance_info else "EMPTY")
     if not _balance_info:
-        logger.warning("Balance not available - email fetch may have failed")
         return JSONResponse({"available": False})
 
     # Start with morning balance
@@ -428,7 +421,6 @@ async def get_balance():
             balance -= t.get("debit", 0)
             balance += t.get("credit", 0)
 
-    logger.info("Returning balance: ₹%.2f", balance)
     return JSONResponse({
         "available": True,
         "balance": round(balance, 2),
@@ -436,6 +428,77 @@ async def get_balance():
         "as_of": _balance_info["date"],
         "updated_at": _balance_info["timestamp"],
     })
+
+
+@app.get("/debug-balance")
+async def debug_balance():
+    """Debug endpoint: try to fetch balance and show raw email text."""
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        return JSONResponse({"error": "GMAIL creds not set", "GMAIL_USER": bool(GMAIL_USER), "GMAIL_APP_PASSWORD": bool(GMAIL_APP_PASSWORD)})
+
+    import imaplib as _imap
+    import email as _email
+    from email_fetcher import _get_email_body, HDFC_SENDERS, IST as _IST
+    import re as _re
+
+    results = {
+        "gmail_user": GMAIL_USER,
+        "ist_now": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S"),
+        "balance_info_cached": _balance_info,
+    }
+
+    try:
+        pw = GMAIL_APP_PASSWORD.strip().replace(" ", "")
+        mail = _imap.IMAP4_SSL("imap.gmail.com", 993)
+        mail.login(GMAIL_USER, pw)
+        mail.select("inbox")
+
+        since_date = (datetime.now(IST) - timedelta(days=2)).strftime("%d-%b-%Y")
+        results["since_date"] = since_date
+
+        ids = []
+        search_log = []
+        for sender in HDFC_SENDERS:
+            for subj in ["Account update", "balance", "View", "Available"]:
+                criteria = f'(FROM "{sender}" SINCE {since_date} SUBJECT "{subj}")'
+                status, msg_ids = mail.search(None, criteria)
+                found = len(msg_ids[0].split()) if status == "OK" and msg_ids[0] else 0
+                search_log.append({"sender": sender, "subject": subj, "found": found})
+                if status == "OK" and msg_ids[0]:
+                    ids.extend(msg_ids[0].split())
+
+        results["search_log"] = search_log
+        results["total_ids"] = len(ids)
+
+        if ids:
+            latest_id = ids[-1]
+            status, msg_data = mail.fetch(latest_id, "(RFC822)")
+            msg = _email.message_from_bytes(msg_data[0][1])
+
+            results["email_subject"] = msg.get("Subject", "")
+            results["email_from"] = msg.get("From", "")
+            results["email_date"] = msg.get("Date", "")
+
+            body = _get_email_body(msg)
+            text = _re.sub(r"\s+", " ", body.replace("\n", " ").replace("\r", " ")) if body else ""
+            results["body_length"] = len(text)
+            results["body_first_500"] = text[:500]
+
+            # Test all patterns
+            patterns = [
+                r"(?:available|avl)[\s.]*balance.*?(?:Rs\.?\s*(?:INR\s*)?|INR\s*)([\d,]+\.?\d*)\s*as\s+(?:of|on)\s+(\d{2}-[A-Za-z]{3}-\d{2,4})",
+                r"(?:your\s+)?(?:available|avl)[\s.]*balance\s+(?:is|:)\s*(?:Rs\.?\s*(?:INR\s*)?|INR\s*)?([\d,]+\.?\d*)",
+                r"balance.*?(?:Rs\.?\s*(?:INR\s*)?|INR\s*)([\d,]+\.?\d*)",
+            ]
+            for i, pat in enumerate(patterns):
+                m = _re.search(pat, text, _re.IGNORECASE)
+                results[f"pattern_{i+1}_match"] = m.groups() if m else None
+
+        mail.logout()
+    except Exception as e:
+        results["error"] = str(e)
+
+    return JSONResponse(results)
 
 
 @app.get("/pending-transactions")
