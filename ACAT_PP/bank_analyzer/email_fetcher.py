@@ -321,7 +321,7 @@ def fetch_hdfc_balance(gmail_user: str, gmail_app_password: str) -> Optional[dic
     # Subject: "View: Account update for your HDFC Bank A/c"
     ids = []
     for sender in HDFC_SENDERS:
-        for subj_term in ["Account update", "balance"]:
+        for subj_term in ["Account update", "balance", "View", "Available"]:
             criteria = f'(FROM "{sender}" SINCE {since_date} SUBJECT "{subj_term}")'
             status, message_ids = mail.search(None, criteria)
             if status == "OK" and message_ids[0]:
@@ -352,16 +352,44 @@ def fetch_hdfc_balance(gmail_user: str, gmail_app_password: str) -> Optional[dic
     text = re.sub(r"\s+", " ", body.replace("\n", " ").replace("\r", " "))
     logger.info("Balance email body (first 500 chars): %s", text[:500])
 
-    bal_match = re.search(
+    # Try multiple regex patterns to handle format variations
+    bal_match = None
+    patterns = [
+        # Pattern 1: "Available balance in your account ... is Rs. INR 79,542.80 as on 14-APR-26"
         r"(?:available|avl)[\s.]*balance.*?(?:Rs\.?\s*(?:INR\s*)?|INR\s*)([\d,]+\.?\d*)\s*as\s+(?:of|on)\s+(\d{2}-[A-Za-z]{3}-\d{2,4})",
-        text, re.IGNORECASE
-    )
+        # Pattern 2: "Your available balance is Rs. 79542.80"
+        r"(?:your\s+)?(?:available|avl)[\s.]*balance\s+(?:is|:)\s*(?:Rs\.?\s*(?:INR\s*)?|INR\s*)?([\d,]+\.?\d*)",
+        # Pattern 3: More flexible: just find "balance" followed by amount
+        r"balance.*?(?:Rs\.?\s*(?:INR\s*)?|INR\s*)([\d,]+\.?\d*)",
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            bal_match = match
+            logger.info("Balance: matched pattern: %s", pattern[:80])
+            break
+
     if not bal_match:
-        logger.warning("Balance: regex did not match. Full text: %s", text[:1000])
+        logger.warning("Balance: no regex pattern matched. Full text: %s", text[:1000])
         return None
 
+    # Extract balance (group 1)
     balance = float(bal_match.group(1).replace(",", ""))
-    date_str = bal_match.group(2)
+    
+    # Try to extract date (may be in group 2 if pattern 1 matched, else use current date)
+    date_str = None
+    if bal_match.lastindex and bal_match.lastindex >= 2:
+        date_str = bal_match.group(2)
+    
+    if not date_str:
+        # Extract date from email body as fallback
+        date_match = re.search(r"(\d{2}-[A-Za-z]{3}-\d{2,4})", text)
+        if date_match:
+            date_str = date_match.group(1)
+        else:
+            # Use today's date
+            date_str = datetime.now(IST).strftime("%d-%b-%y").upper()
 
     # Parse email timestamp
     email_date = msg.get("Date", "")
@@ -370,6 +398,8 @@ def fetch_hdfc_balance(gmail_user: str, gmail_app_password: str) -> Optional[dic
     except Exception:
         timestamp = datetime.now().isoformat()
 
+    logger.info("Balance extracted: ₹%.2f on %s", balance, date_str)
+    
     return {
         "balance": balance,
         "date": date_str,
