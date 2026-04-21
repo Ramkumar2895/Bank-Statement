@@ -24,13 +24,17 @@ from database import (
 )
 from email_fetcher import fetch_hdfc_alerts, fetch_hdfc_balance
 
-# Load .env for Gmail credentials
+# Load .env for Gmail credentials (for local dev)
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 GMAIL_USER = os.getenv("GMAIL_USER", "").strip()
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
 
 logger = logging.getLogger("bank_analyzer")
 logging.basicConfig(level=logging.INFO)
+
+# Debug: Log if env vars are loaded
+logger.info("GMAIL_USER env loaded: %s", "YES" if GMAIL_USER else "NO (empty)")
+logger.info("GMAIL_APP_PASSWORD env loaded: %s", "YES (hidden)" if GMAIL_APP_PASSWORD else "NO (empty)")
 
 app = FastAPI(title="Bank Statement Analyzer")
 
@@ -402,7 +406,9 @@ async def gmail_status():
 @app.get("/balance")
 async def get_balance():
     """Return current available balance from HDFC morning email, adjusted by today's transactions."""
+    logger.info("get_balance() called. _balance_info: %s", "SET" if _balance_info else "EMPTY")
     if not _balance_info:
+        logger.warning("Balance not available - email fetch may have failed")
         return JSONResponse({"available": False})
 
     # Start with morning balance
@@ -421,6 +427,7 @@ async def get_balance():
             balance -= t.get("debit", 0)
             balance += t.get("credit", 0)
 
+    logger.info("Returning balance: ₹%.2f", balance)
     return JSONResponse({
         "available": True,
         "balance": round(balance, 2),
