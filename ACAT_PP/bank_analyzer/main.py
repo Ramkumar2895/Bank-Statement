@@ -24,8 +24,14 @@ from database import (
 )
 from email_fetcher import fetch_hdfc_alerts, fetch_hdfc_balance
 
-# Load .env for Gmail credentials (for local dev)
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+# Load .env for Gmail credentials (for local dev only, Render uses env vars directly)
+env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.exists(env_file):
+    load_dotenv(env_file)
+    logger.info(".env file loaded successfully")
+else:
+    logger.info("No .env file found (expected on Render - using environment variables)")
+
 GMAIL_USER = os.getenv("GMAIL_USER", "").strip()
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "").strip()
 
