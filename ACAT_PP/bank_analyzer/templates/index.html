@@ -739,6 +739,14 @@
             🔔 <span id="pendingCount">0</span> pending
         </div>
 
+        <!-- Fetch Last 2 Days button -->
+        <div style="text-align: right; margin-bottom: 10px;">
+            <button id="fetchLastDaysBtn" onclick="fetchLastDays()" style="background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; display: none;">
+                📧 Fetch Last 2 Days
+            </button>
+            <span id="fetchLastDaysStatus" style="margin-left: 8px; font-size: 13px;"></span>
+        </div>
+
         <div id="dashLoading" class="loading"><div class="spinner"></div><p>Loading dashboard...</p></div>
         <div id="dashEmpty" class="dash-empty" style="display:none">
             <h3>📭 No Saved Data Yet</h3>
@@ -1469,6 +1477,42 @@ async function dismissCurrentTxn() {
     }
 }
 
+async function fetchLastDays() {
+    const btn = document.getElementById('fetchLastDaysBtn');
+    const status = document.getElementById('fetchLastDaysStatus');
+    btn.disabled = true;
+    btn.textContent = '⏳ Fetching...';
+    status.textContent = '';
+
+    try {
+        const resp = await fetch('/fetch-last-days', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days: 2 }),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            if (data.new > 0) {
+                status.style.color = '#4caf50';
+                status.textContent = `✅ ${data.new} new transaction(s) added to pending.`;
+                checkPending();
+            } else {
+                status.style.color = '#ff9800';
+                status.textContent = data.message || 'No new transactions found.';
+            }
+        } else {
+            status.style.color = '#ff5252';
+            status.textContent = '❌ ' + (data.message || 'Failed.');
+        }
+    } catch (e) {
+        status.style.color = '#ff5252';
+        status.textContent = '❌ Connection error.';
+    }
+    btn.disabled = false;
+    btn.textContent = '📧 Fetch Last 2 Days';
+    setTimeout(() => { status.textContent = ''; }, 5000);
+}
+
 // Initialize on page load
 (async function initGmailAutoFetch() {
     try {
@@ -1476,6 +1520,7 @@ async function dismissCurrentTxn() {
         const data = await resp.json();
         if (data.configured && data.running) {
             startPendingPoller();
+            document.getElementById('fetchLastDaysBtn').style.display = 'inline-block';
         }
     } catch (e) {}
 })();

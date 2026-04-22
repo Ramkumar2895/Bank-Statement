@@ -21,6 +21,7 @@ from categorizer import categorize_transactions, get_category_summary, get_month
 from database import (
     save_transactions, seed_passwords, get_bank_password, get_all_bank_names,
     get_saved_categories, get_all_transactions,
+    load_pending_transactions, save_pending_transactions, clear_pending_transactions,
 )
 from email_fetcher import fetch_hdfc_alerts, fetch_hdfc_balance
 
@@ -39,7 +40,7 @@ app = FastAPI(title="Bank Statement Analyzer")
 # ---------------------------------------------------------------------------
 scheduler = BackgroundScheduler()
 _pending_lock = Lock()
-_pending_transactions: list[dict] = []      # txns waiting for user approval
+_pending_transactions: list[dict] = load_pending_transactions()  # txns waiting for user approval (persisted to XLSX)
 _existing_keys: set[tuple] | None = None    # cache of saved txn keys
 _auto_fetch_log: list[dict] = []
 
@@ -84,7 +85,7 @@ def _auto_fetch_job():
         logger.error("Balance fetch error: %s", e)
 
     try:
-        raw = fetch_hdfc_alerts(GMAIL_USER, GMAIL_APP_PASSWORD, days_back=0)
+        raw = fetch_hdfc_alerts(GMAIL_USER, GMAIL_APP_PASSWORD, days_back=1)
         entry = {"time": datetime.now(IST).strftime("%H:%M:%S"), "fetched": len(raw), "new": 0, "error": None}
 
         if raw:
@@ -109,6 +110,9 @@ def _auto_fetch_job():
                 new_count += 1
 
             entry["new"] = new_count
+            if new_count > 0:
+                with _pending_lock:
+                    save_pending_transactions(_pending_transactions)
 
         _auto_fetch_log.append(entry)
         if len(_auto_fetch_log) > 100:
@@ -521,6 +525,8 @@ async def approve_txn(request: Request):
             if t.get("_pending_id") == pending_id:
                 txn = _pending_transactions.pop(i)
                 break
+        if txn is not None:
+            save_pending_transactions(_pending_transactions)
 
     if not txn:
         return JSONResponse({"error": "not_found", "message": "Transaction not found or already processed."}, status_code=404)
@@ -550,6 +556,7 @@ async def approve_all(request: Request):
     with _pending_lock:
         txns = list(_pending_transactions)
         _pending_transactions.clear()
+        clear_pending_transactions()
 
     for t in txns:
         pid = t.get("_pending_id", "")
@@ -580,9 +587,52 @@ async def dismiss_txn(request: Request):
         for i, t in enumerate(_pending_transactions):
             if t.get("_pending_id") == pending_id:
                 _pending_transactions.pop(i)
+                save_pending_transactions(_pending_transactions)
                 return JSONResponse({"success": True})
 
     return JSONResponse({"error": "not_found"}, status_code=404)
+
+
+@app.post("/fetch-last-days")
+async def fetch_last_days(request: Request):
+    """Fetch emails from last N days and add new ones to pending queue."""
+    body = await request.json()
+    days = min(int(body.get("days", 2)), 7)  # cap at 7
+
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        return JSONResponse({"error": "not_configured", "message": "Gmail not configured."}, status_code=400)
+
+    try:
+        raw = fetch_hdfc_alerts(GMAIL_USER, GMAIL_APP_PASSWORD, days_back=days)
+    except Exception as e:
+        return JSONResponse({"error": "fetch_error", "message": str(e)}, status_code=500)
+
+    if not raw:
+        return JSONResponse({"success": True, "new": 0, "message": f"No emails found in last {days} days."})
+
+    txns = categorize_transactions(raw)
+    saved_cats = get_saved_categories()
+    existing = _get_existing_keys()
+
+    new_count = 0
+    with _pending_lock:
+        pending_keys = {(t["date"], t["description"].lower(), round(float(t["debit"]), 2)) for t in _pending_transactions}
+
+        for t in txns:
+            key = (str(t["date"]).strip(), str(t["description"]).strip().lower(), round(float(t["debit"]), 2))
+            if key in existing or key in pending_keys:
+                continue
+            if saved_cats and key in saved_cats:
+                t["category"] = saved_cats[key]
+            t["_pending_id"] = str(uuid.uuid4())
+            _pending_transactions.append(t)
+            pending_keys.add(key)
+            new_count += 1
+
+        if new_count > 0:
+            save_pending_transactions(_pending_transactions)
+
+    return JSONResponse({"success": True, "new": new_count, "total_fetched": len(raw)})
 
 
 @app.on_event("shutdown")

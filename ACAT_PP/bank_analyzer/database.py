@@ -27,12 +27,14 @@ os.makedirs(DATA_DIR, exist_ok=True)
 STATEMENTS_FILE = os.path.join(DATA_DIR, "statements.xlsx")
 TRANSACTIONS_FILE = os.path.join(DATA_DIR, "transactions.xlsx")
 PASSWORDS_FILE = os.path.join(DATA_DIR, "passwords.xlsx")
+PENDING_FILE = os.path.join(DATA_DIR, "pending.xlsx")
 KEY_FILE = os.path.join(DATA_DIR, ".encryption.key")
 
 # Column definitions matching MongoDB document fields
 STATEMENTS_COLUMNS = ["_id", "filename", "uploaded_at", "total_transactions", "total_income", "total_expense"]
 TRANSACTIONS_COLUMNS = ["_id", "statement_id", "date", "description", "category", "debit", "credit", "balance", "is_cash", "saved_at"]
 PASSWORDS_COLUMNS = ["_id", "bank_name", "encrypted_password", "created_at"]
+PENDING_COLUMNS = ["_pending_id", "date", "description", "category", "debit", "credit", "balance", "is_cash", "added_at"]
 
 
 # ---------------------------------------------------------------------------
@@ -538,3 +540,53 @@ def delete_gmail_config():
         for row_num in reversed(rows_to_delete):
             ws.delete_rows(row_num)
         wb.save(PASSWORDS_FILE)
+
+
+# ---------------------------------------------------------------------------
+# Pending transactions persistence
+# ---------------------------------------------------------------------------
+
+def load_pending_transactions() -> list[dict]:
+    """Load all pending transactions from XLSX."""
+    pending = []
+    if not os.path.exists(PENDING_FILE):
+        return pending
+    wb = load_workbook(PENDING_FILE)
+    ws = wb.active
+    headers = [cell.value for cell in ws[1]]
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        txn = {}
+        for i, col in enumerate(headers):
+            val = row[i]
+            if col in ("debit", "credit", "balance"):
+                try:
+                    val = round(float(val or 0), 2)
+                except (ValueError, TypeError):
+                    val = 0.0
+            elif col == "is_cash":
+                val = str(val).upper() in ("TRUE", "1", "YES") if val else False
+            else:
+                val = str(val) if val else ""
+            txn[col] = val
+        pending.append(txn)
+    return pending
+
+
+def save_pending_transactions(pending: list[dict]):
+    """Overwrite the pending XLSX with the current list."""
+    wb = Workbook()
+    ws = wb.active
+    ws.append(PENDING_COLUMNS)
+    for t in pending:
+        row = [t.get(col, "") for col in PENDING_COLUMNS]
+        ws.append(row)
+    wb.save(PENDING_FILE)
+
+
+def clear_pending_transactions():
+    """Remove all pending transactions."""
+    if os.path.exists(PENDING_FILE):
+        wb = Workbook()
+        ws = wb.active
+        ws.append(PENDING_COLUMNS)
+        wb.save(PENDING_FILE)
