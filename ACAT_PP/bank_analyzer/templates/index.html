@@ -457,6 +457,25 @@
             background: var(--select-option-bg);
             color: var(--select-option-color);
         }
+        .dash-cat-select {
+            padding: 5px 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--bg-input);
+            color: var(--badge-text);
+            font-size: 0.82em;
+            font-weight: 500;
+            cursor: pointer;
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+            padding-right: 24px;
+            transition: border-color 0.2s, background 0.6s;
+            max-width: 160px;
+        }
+        .dash-cat-select:hover { border-color: var(--accent); }
+        .dash-cat-select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(58,123,213,0.1); }
+        .dash-cat-select option { background: var(--select-option-bg); color: var(--select-option-color); }
 
         /* Add Cash Entry */
         .add-cash-section {
@@ -1347,17 +1366,54 @@ function renderDashCharts(transactions) {
 function renderDashTable(transactions) {
     const tbody = document.getElementById('dashTxnTable');
     tbody.innerHTML = '';
-    transactions.forEach(t => {
+    transactions.forEach((t, idx) => {
         const cashTag = (t.is_cash === true || t.is_cash === 'True') ? '<span class="cash-tag">CASH</span>' : '';
+        const catOptions = dashAllCategories.map(c =>
+            `<option value="${escapeHtml(c)}"${c === t.category ? ' selected' : ''}>${escapeHtml(c)}</option>`
+        ).join('');
         tbody.innerHTML += `<tr>
             <td>${t.date}</td>
             <td>${escapeHtml(t.description)}${cashTag}</td>
-            <td><span class="category-badge">${escapeHtml(t.category)}</span></td>
+            <td><select class="dash-cat-select" onchange="onDashCategoryChange(this, '${escapeHtml(t.date)}', '${escapeHtml(t.description)}', ${t.debit})">${catOptions}</select></td>
             <td class="${t.debit > 0 ? 'amount-debit' : ''}">${t.debit > 0 ? '₹' + formatNum(t.debit) : '-'}</td>
             <td class="${t.credit > 0 ? 'amount-credit' : ''}">${t.credit > 0 ? '₹' + formatNum(t.credit) : '-'}</td>
             <td>₹${formatNum(t.balance)}</td>
         </tr>`;
     });
+}
+
+async function onDashCategoryChange(selectEl, date, description, debit) {
+    const newCategory = selectEl.value;
+    selectEl.disabled = true;
+    selectEl.style.opacity = '0.5';
+
+    try {
+        const resp = await fetch('/update-category', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date, description, debit, category: newCategory }),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            // Update local cache too
+            const t = dashTransactions.find(t => t.date === date && t.description === description && t.debit === debit);
+            if (t) t.category = newCategory;
+            dashDataCache = null; // force reload next time
+            selectEl.style.opacity = '1';
+            // Brief green flash
+            selectEl.style.background = 'rgba(16,185,129,0.15)';
+            setTimeout(() => { selectEl.style.background = ''; }, 1000);
+        } else {
+            selectEl.style.opacity = '1';
+            selectEl.style.background = 'rgba(239,68,68,0.15)';
+            setTimeout(() => { selectEl.style.background = ''; }, 1500);
+        }
+    } catch (e) {
+        selectEl.style.opacity = '1';
+        selectEl.style.background = 'rgba(239,68,68,0.15)';
+        setTimeout(() => { selectEl.style.background = ''; }, 1500);
+    }
+    selectEl.disabled = false;
 }
 
 function filterDashTable() {

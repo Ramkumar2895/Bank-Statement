@@ -313,6 +313,19 @@ def _update_transaction_categories(updates: list[tuple]):
     wb.save(TRANSACTIONS_FILE)
 
 
+def update_transaction_category(date: str, description: str, debit: float, new_category: str) -> bool:
+    """Update category for a single saved transaction identified by (date, description, debit). Returns True if updated."""
+    existing = _get_existing_transaction_categories()
+    key = (date.strip(), description.strip().lower(), round(debit, 2))
+    if key not in existing:
+        return False
+    row_num, old_cat = existing[key]
+    if old_cat == new_category:
+        return True  # already correct
+    _update_transaction_categories([(row_num, new_category)])
+    return True
+
+
 def save_transactions(transactions: list[dict], filename: str) -> dict:
     """Save transactions after deduplication. Updates categories for existing ones. Returns info dict."""
 

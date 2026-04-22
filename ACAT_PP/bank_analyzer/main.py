@@ -22,6 +22,7 @@ from database import (
     save_transactions, seed_passwords, get_bank_password, get_all_bank_names,
     get_saved_categories, get_all_transactions,
     load_pending_transactions, save_pending_transactions, clear_pending_transactions,
+    update_transaction_category,
 )
 from email_fetcher import fetch_hdfc_alerts, fetch_hdfc_balance
 
@@ -343,6 +344,28 @@ async def save_to_db(request: Request):
             "skipped": result["skipped"],
             "updated": result["updated"],
         })
+    except Exception as e:
+        return JSONResponse({"error": "db_error", "message": str(e)}, status_code=500)
+
+
+@app.post("/update-category")
+async def update_category(request: Request):
+    """Update the category of a saved transaction."""
+    body = await request.json()
+    date = body.get("date", "")
+    description = body.get("description", "")
+    debit = float(body.get("debit", 0))
+    new_category = body.get("category", "")
+
+    if not new_category:
+        return JSONResponse({"error": "missing_category"}, status_code=400)
+
+    try:
+        updated = update_transaction_category(date, description, debit, new_category)
+        if updated:
+            reload_learned_categories()
+            return JSONResponse({"success": True})
+        return JSONResponse({"error": "not_found", "message": "Transaction not found."}, status_code=404)
     except Exception as e:
         return JSONResponse({"error": "db_error", "message": str(e)}, status_code=500)
 
