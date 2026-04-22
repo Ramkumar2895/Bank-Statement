@@ -85,7 +85,7 @@ def _auto_fetch_job():
         logger.error("Balance fetch error: %s", e)
 
     try:
-        raw = fetch_hdfc_alerts(GMAIL_USER, GMAIL_APP_PASSWORD, days_back=1)
+        raw = fetch_hdfc_alerts(GMAIL_USER, GMAIL_APP_PASSWORD, days_back=0)
         entry = {"time": datetime.now(IST).strftime("%H:%M:%S"), "fetched": len(raw), "new": 0, "error": None}
 
         if raw:
@@ -593,34 +593,60 @@ async def dismiss_txn(request: Request):
     return JSONResponse({"error": "not_found"}, status_code=404)
 
 
-@app.post("/fetch-last-days")
-async def fetch_last_days(request: Request):
-    """Fetch emails from last N days and add new ones to pending queue."""
+@app.post("/fetch-for-date")
+async def fetch_for_date(request: Request):
+    """Fetch emails for a specific date and add new ones to pending queue.
+    Expects {"target_date": "22/04/26"} in dd/mm/yy format.
+    """
     body = await request.json()
-    days = min(int(body.get("days", 2)), 7)  # cap at 7
+    target_date = body.get("target_date", "").strip()
+
+    if not target_date:
+        return JSONResponse({"error": "missing_date", "message": "No target date provided."}, status_code=400)
 
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         return JSONResponse({"error": "not_configured", "message": "Gmail not configured."}, status_code=400)
 
+    # We need to fetch emails going back far enough to include the target date
+    # Parse target_date (dd/mm/yy) to compute days_back
     try:
-        raw = fetch_hdfc_alerts(GMAIL_USER, GMAIL_APP_PASSWORD, days_back=days)
+        parts = target_date.split("/")
+        day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+        if year < 100:
+            year += 2000
+        target_dt = datetime(year, month, day, tzinfo=IST)
+        now_ist = datetime.now(IST)
+        days_back = max((now_ist.date() - target_dt.date()).days, 0)
+    except Exception:
+        return JSONResponse({"error": "bad_date", "message": "Invalid date format."}, status_code=400)
+
+    try:
+        raw = fetch_hdfc_alerts(GMAIL_USER, GMAIL_APP_PASSWORD, days_back=days_back)
     except Exception as e:
         return JSONResponse({"error": "fetch_error", "message": str(e)}, status_code=500)
 
     if not raw:
-        return JSONResponse({"success": True, "new": 0, "message": f"No emails found in last {days} days."})
+        return JSONResponse({"success": True, "new": 0, "message": f"No emails found for {target_date}."})
 
+    # Filter to only the target date
     txns = categorize_transactions(raw)
+    txns = [t for t in txns if str(t.get("date", "")).strip() == target_date]
+
+    if not txns:
+        return JSONResponse({"success": True, "new": 0, "message": f"No transactions found for {target_date}."})
+
     saved_cats = get_saved_categories()
     existing = _get_existing_keys()
 
     new_count = 0
+    already_saved = 0
     with _pending_lock:
         pending_keys = {(t["date"], t["description"].lower(), round(float(t["debit"]), 2)) for t in _pending_transactions}
 
         for t in txns:
             key = (str(t["date"]).strip(), str(t["description"]).strip().lower(), round(float(t["debit"]), 2))
             if key in existing or key in pending_keys:
+                already_saved += 1
                 continue
             if saved_cats and key in saved_cats:
                 t["category"] = saved_cats[key]
@@ -632,7 +658,7 @@ async def fetch_last_days(request: Request):
         if new_count > 0:
             save_pending_transactions(_pending_transactions)
 
-    return JSONResponse({"success": True, "new": new_count, "total_fetched": len(raw)})
+    return JSONResponse({"success": True, "new": new_count, "already_saved": already_saved, "total_for_date": len(txns)})
 
 
 @app.on_event("shutdown")

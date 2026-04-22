@@ -588,6 +588,80 @@
 
         /* (Gmail bar removed) */
 
+        /* Past Date Cards */
+        .past-date-cards {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .past-date-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 18px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex: 1;
+            min-width: 180px;
+            max-width: 280px;
+            position: relative;
+        }
+        .past-date-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 15px rgba(124,58,237,0.2);
+            transform: translateY(-1px);
+        }
+        .past-date-card.fetching {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+        .past-date-card.done {
+            border-color: #10b981;
+            background: rgba(16,185,129,0.06);
+        }
+        .past-date-icon {
+            font-size: 1.6em;
+            line-height: 1;
+        }
+        .past-date-info {
+            flex: 1;
+        }
+        .past-date-label {
+            font-size: 0.78em;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        .past-date-value {
+            font-size: 1em;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-top: 2px;
+        }
+        .past-date-status {
+            font-size: 0.78em;
+            color: var(--text-muted);
+            text-align: right;
+            min-width: 60px;
+        }
+        .past-date-status.success { color: #10b981; font-weight: 600; }
+        .past-date-status.info { color: #f59e0b; font-weight: 600; }
+        .past-date-status.error { color: #ef4444; font-weight: 600; }
+
+        @media (max-width: 480px) {
+            .past-date-cards {
+                flex-direction: column;
+            }
+            .past-date-card {
+                max-width: 100%;
+            }
+        }
+
         /* Dashboard Styles */
         .dash-filter-bar {
             display: flex;
@@ -739,12 +813,24 @@
             🔔 <span id="pendingCount">0</span> pending
         </div>
 
-        <!-- Fetch Last 2 Days button -->
-        <div style="text-align: right; margin-bottom: 10px;">
-            <button id="fetchLastDaysBtn" onclick="fetchLastDays()" style="background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; display: none;">
-                📧 Fetch Last 2 Days
-            </button>
-            <span id="fetchLastDaysStatus" style="margin-left: 8px; font-size: 13px;"></span>
+        <!-- Fetch Past Date Cards -->
+        <div id="pastDateCards" class="past-date-cards" style="display:none">
+            <div class="past-date-card" id="dateCard1" onclick="fetchForDate(1)">
+                <div class="past-date-icon">📅</div>
+                <div class="past-date-info">
+                    <div class="past-date-label" id="dateLabel1">Yesterday</div>
+                    <div class="past-date-value" id="dateValue1"></div>
+                </div>
+                <div class="past-date-status" id="dateStatus1"></div>
+            </div>
+            <div class="past-date-card" id="dateCard2" onclick="fetchForDate(2)">
+                <div class="past-date-icon">📅</div>
+                <div class="past-date-info">
+                    <div class="past-date-label" id="dateLabel2">Day Before</div>
+                    <div class="past-date-value" id="dateValue2"></div>
+                </div>
+                <div class="past-date-status" id="dateStatus2"></div>
+            </div>
         </div>
 
         <div id="dashLoading" class="loading"><div class="spinner"></div><p>Loading dashboard...</p></div>
@@ -1477,40 +1563,70 @@ async function dismissCurrentTxn() {
     }
 }
 
-async function fetchLastDays() {
-    const btn = document.getElementById('fetchLastDaysBtn');
-    const status = document.getElementById('fetchLastDaysStatus');
-    btn.disabled = true;
-    btn.textContent = '⏳ Fetching...';
-    status.textContent = '';
+// Past date helpers
+function _getPastDate(daysAgo) {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return {
+        apiDate: `${dd}/${mm}/${yy}`,
+        display: `${dd} ${months[d.getMonth()]} ${d.getFullYear()}`,
+        weekday: d.toLocaleDateString('en-US', { weekday: 'short' }),
+    };
+}
+
+function _initDateCards() {
+    const d1 = _getPastDate(1);
+    const d2 = _getPastDate(2);
+    document.getElementById('dateValue1').textContent = d1.display + ' (' + d1.weekday + ')';
+    document.getElementById('dateValue2').textContent = d2.display + ' (' + d2.weekday + ')';
+    document.getElementById('dateCard1').dataset.apidate = d1.apiDate;
+    document.getElementById('dateCard2').dataset.apidate = d2.apiDate;
+}
+
+async function fetchForDate(idx) {
+    const card = document.getElementById('dateCard' + idx);
+    const statusEl = document.getElementById('dateStatus' + idx);
+    const targetDate = card.dataset.apidate;
+
+    card.classList.add('fetching');
+    card.classList.remove('done');
+    statusEl.className = 'past-date-status';
+    statusEl.textContent = '⏳ Fetching...';
 
     try {
-        const resp = await fetch('/fetch-last-days', {
+        const resp = await fetch('/fetch-for-date', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ days: 2 }),
+            body: JSON.stringify({ target_date: targetDate }),
         });
         const data = await resp.json();
         if (data.success) {
             if (data.new > 0) {
-                status.style.color = '#4caf50';
-                status.textContent = `✅ ${data.new} new transaction(s) added to pending.`;
+                statusEl.className = 'past-date-status success';
+                statusEl.textContent = `✅ ${data.new} new`;
+                card.classList.add('done');
                 checkPending();
+            } else if (data.already_saved > 0) {
+                statusEl.className = 'past-date-status info';
+                statusEl.textContent = `✓ Already saved`;
+                card.classList.add('done');
             } else {
-                status.style.color = '#ff9800';
-                status.textContent = data.message || 'No new transactions found.';
+                statusEl.className = 'past-date-status info';
+                statusEl.textContent = 'No data';
             }
         } else {
-            status.style.color = '#ff5252';
-            status.textContent = '❌ ' + (data.message || 'Failed.');
+            statusEl.className = 'past-date-status error';
+            statusEl.textContent = '❌ ' + (data.message || 'Failed');
         }
     } catch (e) {
-        status.style.color = '#ff5252';
-        status.textContent = '❌ Connection error.';
+        statusEl.className = 'past-date-status error';
+        statusEl.textContent = '❌ Error';
     }
-    btn.disabled = false;
-    btn.textContent = '📧 Fetch Last 2 Days';
-    setTimeout(() => { status.textContent = ''; }, 5000);
+    card.classList.remove('fetching');
 }
 
 // Initialize on page load
@@ -1520,7 +1636,8 @@ async function fetchLastDays() {
         const data = await resp.json();
         if (data.configured && data.running) {
             startPendingPoller();
-            document.getElementById('fetchLastDaysBtn').style.display = 'inline-block';
+            _initDateCards();
+            document.getElementById('pastDateCards').style.display = 'flex';
         }
     } catch (e) {}
 })();
