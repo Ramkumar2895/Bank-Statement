@@ -603,3 +603,5 @@ def clear_pending_transactions():
         ws = wb.active
         ws.append(PENDING_COLUMNS)
         wb.save(PENDING_FILE)
+
+        
