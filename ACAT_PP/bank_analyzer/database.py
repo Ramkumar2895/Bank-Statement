@@ -2,23 +2,30 @@
 Database operations.
 
 TESTING MODE: Writes to XLSX files (same structure as MongoDB collections).
-PRODUCTION: Switch USE_XLSX = False and uncomment MongoDB code below.
+PRODUCTION: Set MONGODB_URI environment variable to use MongoDB for persistent cloud storage.
 
 MongoDB collections structure:
   - statements: {_id, filename, uploaded_at, total_transactions, total_income, total_expense}
   - transactions: {_id, statement_id, date, description, category, debit, credit, balance, is_cash, saved_at}
   - passwords: {_id, bank_name, encrypted_password, created_at}
+  - pending: {_pending_id, date, description, category, debit, credit, balance, is_cash, added_at}
 """
 import os
 import uuid
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from cryptography.fernet import Fernet
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
-# Toggle this flag to switch between XLSX (testing) and MongoDB (production)
+# Toggle: Auto-detect based on environment variable
+# If MONGODB_URI is set, use MongoDB (cloud/production)
+# Otherwise, fall back to XLSX (local/testing)
 # ---------------------------------------------------------------------------
-USE_XLSX = True
+MONGODB_URI = os.getenv("MONGODB_URI", "").strip()
+USE_XLSX = not MONGODB_URI  # Use MongoDB if URI is provided, else use XLSX
 
 # Directory where XLSX files are stored (one file per collection)
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -38,78 +45,23 @@ PENDING_COLUMNS = ["_pending_id", "date", "description", "category", "debit", "c
 
 
 # ---------------------------------------------------------------------------
-# Encryption helpers
+# MongoDB setup
 # ---------------------------------------------------------------------------
+_mongo_client = None
+_mongo_db = None
 
-def _get_encryption_key() -> bytes:
-    """Load or generate the Fernet encryption key."""
-    if os.path.exists(KEY_FILE):
-        with open(KEY_FILE, "rb") as f:
-            return f.read()
-    key = Fernet.generate_key()
-    with open(KEY_FILE, "wb") as f:
-        f.write(key)
-    return key
-
-
-def _encrypt(plaintext: str) -> str:
-    """Encrypt a plaintext string and return the token as a string."""
-    f = Fernet(_get_encryption_key())
-    return f.encrypt(plaintext.encode()).decode()
-
-
-def _decrypt(token: str) -> str:
-    """Decrypt a Fernet token string back to plaintext."""
-    f = Fernet(_get_encryption_key())
-    return f.decrypt(token.encode()).decode()
-
-
-def _get_or_create_workbook(filepath: str, columns: list[str]) -> Workbook:
-    """Load existing workbook or create a new one with header row."""
-    if os.path.exists(filepath):
-        return load_workbook(filepath)
-    wb = Workbook()
-    ws = wb.active
-    ws.append(columns)
-    wb.save(filepath)
-    return wb
-
-
-def _append_row(filepath: str, columns: list[str], doc: dict):
-    """Append a single document (dict) as a row in the XLSX file."""
-    wb = _get_or_create_workbook(filepath, columns)
-    ws = wb.active
-    row = [doc.get(col, "") for col in columns]
-    ws.append(row)
-    wb.save(filepath)
-
-
-def _append_rows(filepath: str, columns: list[str], docs: list[dict]):
-    """Append multiple documents as rows in the XLSX file."""
-    wb = _get_or_create_workbook(filepath, columns)
-    ws = wb.active
-    for doc in docs:
-        row = [doc.get(col, "") for col in columns]
-        ws.append(row)
-    wb.save(filepath)
-
-
-# ---------------------------------------------------------------------------
-# MongoDB setup (uncomment when USE_XLSX = False)
-# ---------------------------------------------------------------------------
-# from pymongo import MongoClient
-# from dotenv import load_dotenv
-# load_dotenv()
-# MONGO_URI = os.getenv("MONGO_URI")
-# _client = None
-# _db = None
-#
-# def get_db():
-#     global _client, _db
-#     if _db is None:
-#         _client = MongoClient(MONGO_URI)
-#         _db = _client["bank_analyzer"]
-#     return _db
+def _get_mongo_db():
+    """Connect to MongoDB and return the database object."""
+    global _mongo_client, _mongo_db
+    if _mongo_db is None:
+        from pymongo import MongoClient
+        _mongo_client = MongoClient(MONGODB_URI)
+        _mongo_db = _mongo_client["bank_analyzer"]
+        # Create indexes for faster queries
+        _mongo_db.transactions.create_index([("statement_id", 1)])
+        _mongo_db.transactions.create_index([("date", 1)])
+        _mongo_db.passwords.create_index([("bank_name", 1)])
+    return _mongo_db
 
 
 def _get_existing_transaction_keys() -> set[tuple]:
@@ -133,14 +85,13 @@ def _get_existing_transaction_keys() -> set[tuple]:
                 debit_val = 0.0
             keys.add((date_val, desc_val, debit_val))
     else:
-        # db = get_db()
-        # for doc in db.transactions.find({}, {"date": 1, "description": 1, "debit": 1}):
-        #     keys.add((
-        #         str(doc.get("date", "")).strip(),
-        #         str(doc.get("description", "")).strip().lower(),
-        #         round(float(doc.get("debit", 0)), 2),
-        #     ))
-        raise NotImplementedError("Set USE_XLSX = True or configure MongoDB")
+        db = _get_mongo_db()
+        for doc in db.transactions.find({}, {"date": 1, "description": 1, "debit": 1}):
+            keys.add((
+                str(doc.get("date", "")).strip(),
+                str(doc.get("description", "")).strip().lower(),
+                round(float(doc.get("debit", 0)), 2),
+            ))
     return keys
 
 
@@ -172,7 +123,14 @@ def get_saved_categories() -> dict[tuple, str]:
             if cat_val:
                 categories[(date_val, desc_val, debit_val)] = cat_val
     else:
-        raise NotImplementedError("Set USE_XLSX = True or configure MongoDB")
+        db = _get_mongo_db()
+        for doc in db.transactions.find({}, {"date": 1, "description": 1, "debit": 1, "category": 1}):
+            date_val = str(doc.get("date", "")).strip()
+            desc_val = str(doc.get("description", "")).strip().lower()
+            debit_val = round(float(doc.get("debit", 0)), 2)
+            cat_val = str(doc.get("category", "")).strip()
+            if cat_val:
+                categories[(date_val, desc_val, debit_val)] = cat_val
     return categories
 
 
@@ -204,7 +162,16 @@ def get_learned_categories() -> dict[str, str]:
                 if frag and len(frag) >= 3:
                     learned[frag] = cat
     else:
-        raise NotImplementedError("Set USE_XLSX = True or configure MongoDB")
+        db = _get_mongo_db()
+        for doc in db.transactions.find({}, {"description": 1, "category": 1}):
+            desc = str(doc.get("description", "")).strip()
+            cat = str(doc.get("category", "")).strip()
+            if not desc or not cat or cat == "Others":
+                continue
+            fragments = _extract_name_fragments(desc)
+            for frag in fragments:
+                if frag and len(frag) >= 3:
+                    learned[frag] = cat
     return learned
 
 
@@ -269,7 +236,21 @@ def get_all_transactions() -> list[dict]:
                 txn[col] = val
             transactions.append(txn)
     else:
-        raise NotImplementedError("Set USE_XLSX = True or configure MongoDB")
+        db = _get_mongo_db()
+        for doc in db.transactions.find({}).sort("saved_at", -1):
+            txn = {
+                "_id": str(doc.get("_id", "")),
+                "statement_id": str(doc.get("statement_id", "")),
+                "date": str(doc.get("date", "")),
+                "description": str(doc.get("description", "")),
+                "category": str(doc.get("category", "")),
+                "debit": round(float(doc.get("debit", 0)), 2),
+                "credit": round(float(doc.get("credit", 0)), 2),
+                "balance": round(float(doc.get("balance", 0)), 2),
+                "is_cash": bool(doc.get("is_cash", False)),
+                "saved_at": str(doc.get("saved_at", "")),
+            }
+            transactions.append(txn)
     return transactions
 
 
@@ -315,15 +296,27 @@ def _update_transaction_categories(updates: list[tuple]):
 
 def update_transaction_category(date: str, description: str, debit: float, new_category: str) -> bool:
     """Update category for a single saved transaction identified by (date, description, debit). Returns True if updated."""
-    existing = _get_existing_transaction_categories()
-    key = (date.strip(), description.strip().lower(), round(debit, 2))
-    if key not in existing:
-        return False
-    row_num, old_cat = existing[key]
-    if old_cat == new_category:
-        return True  # already correct
-    _update_transaction_categories([(row_num, new_category)])
-    return True
+    if USE_XLSX:
+        existing = _get_existing_transaction_categories()
+        key = (date.strip(), description.strip().lower(), round(debit, 2))
+        if key not in existing:
+            return False
+        row_num, old_cat = existing[key]
+        if old_cat == new_category:
+            return True  # already correct
+        _update_transaction_categories([(row_num, new_category)])
+        return True
+    else:
+        db = _get_mongo_db()
+        result = db.transactions.update_one(
+            {
+                "date": date.strip(),
+                "description": description.strip(),
+                "debit": round(float(debit), 2),
+            },
+            {"$set": {"category": new_category}}
+        )
+        return result.modified_count > 0
 
 
 def save_transactions(transactions: list[dict], filename: str) -> dict:
@@ -342,20 +335,27 @@ def save_transactions(transactions: list[dict], filename: str) -> dict:
             round(float(t["debit"]), 2),
         )
         if key in existing:
-            row_num, saved_cat = existing[key]
-            # If user changed the category, queue an update
-            if t.get("category", "") and t["category"] != saved_cat:
-                category_updates.append((row_num, t["category"]))
+            if USE_XLSX:
+                row_num, saved_cat = existing[key]
+                # If user changed the category, queue an update
+                if t.get("category", "") and t["category"] != saved_cat:
+                    category_updates.append((row_num, t["category"]))
+            else:
+                # For MongoDB, directly update in collection
+                saved_cat = existing[key][1]
+                if t.get("category", "") and t["category"] != saved_cat:
+                    update_transaction_category(t["date"], t["description"], t["debit"], t["category"])
             skipped += 1
         else:
             new_transactions.append(t)
             existing[key] = (0, t.get("category", ""))  # avoid dupes within the same upload
 
-    # Apply category updates to existing rows
+    # Apply category updates to existing rows (XLSX only)
     updated = 0
-    if category_updates:
-        if USE_XLSX:
-            _update_transaction_categories(category_updates)
+    if category_updates and USE_XLSX:
+        _update_transaction_categories(category_updates)
+        updated = len(category_updates)
+    elif not USE_XLSX and category_updates:
         updated = len(category_updates)
 
     if not new_transactions:
@@ -397,15 +397,10 @@ def save_transactions(transactions: list[dict], filename: str) -> dict:
         if txn_docs:
             _append_rows(TRANSACTIONS_FILE, TRANSACTIONS_COLUMNS, txn_docs)
     else:
-        # MongoDB path (uncomment get_db and imports above)
-        # db = get_db()
-        # result = db.statements.insert_one(statement_doc)
-        # statement_id = str(result.inserted_id)
-        # for doc in txn_docs:
-        #     doc["statement_id"] = result.inserted_id
-        # if txn_docs:
-        #     db.transactions.insert_many(txn_docs)
-        raise NotImplementedError("Set USE_XLSX = True or configure MongoDB")
+        db = _get_mongo_db()
+        db.statements.insert_one(statement_doc)
+        if txn_docs:
+            db.transactions.insert_many(txn_docs)
 
     return {
         "statement_id": statement_id,
@@ -560,48 +555,89 @@ def delete_gmail_config():
 # ---------------------------------------------------------------------------
 
 def load_pending_transactions() -> list[dict]:
-    """Load all pending transactions from XLSX."""
+    """Load all pending transactions from the database."""
     pending = []
-    if not os.path.exists(PENDING_FILE):
-        return pending
-    wb = load_workbook(PENDING_FILE)
-    ws = wb.active
-    headers = [cell.value for cell in ws[1]]
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        txn = {}
-        for i, col in enumerate(headers):
-            val = row[i]
-            if col in ("debit", "credit", "balance"):
-                try:
-                    val = round(float(val or 0), 2)
-                except (ValueError, TypeError):
-                    val = 0.0
-            elif col == "is_cash":
-                val = str(val).upper() in ("TRUE", "1", "YES") if val else False
-            else:
-                val = str(val) if val else ""
-            txn[col] = val
-        pending.append(txn)
+    if USE_XLSX:
+        if not os.path.exists(PENDING_FILE):
+            return pending
+        wb = load_workbook(PENDING_FILE)
+        ws = wb.active
+        headers = [cell.value for cell in ws[1]]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            txn = {}
+            for i, col in enumerate(headers):
+                val = row[i]
+                if col in ("debit", "credit", "balance"):
+                    try:
+                        val = round(float(val or 0), 2)
+                    except (ValueError, TypeError):
+                        val = 0.0
+                elif col == "is_cash":
+                    val = str(val).upper() in ("TRUE", "1", "YES") if val else False
+                else:
+                    val = str(val) if val else ""
+                txn[col] = val
+            pending.append(txn)
+    else:
+        db = _get_mongo_db()
+        for doc in db.pending.find({}).sort("added_at", -1):
+            txn = {
+                "_pending_id": str(doc.get("_pending_id", "")),
+                "date": str(doc.get("date", "")),
+                "description": str(doc.get("description", "")),
+                "category": str(doc.get("category", "")),
+                "debit": round(float(doc.get("debit", 0)), 2),
+                "credit": round(float(doc.get("credit", 0)), 2),
+                "balance": round(float(doc.get("balance", 0)), 2),
+                "is_cash": bool(doc.get("is_cash", False)),
+                "added_at": str(doc.get("added_at", "")),
+            }
+            pending.append(txn)
     return pending
 
 
 def save_pending_transactions(pending: list[dict]):
-    """Overwrite the pending XLSX with the current list."""
-    wb = Workbook()
-    ws = wb.active
-    ws.append(PENDING_COLUMNS)
-    for t in pending:
-        row = [t.get(col, "") for col in PENDING_COLUMNS]
-        ws.append(row)
-    wb.save(PENDING_FILE)
+    """Save pending transactions to the database."""
+    if USE_XLSX:
+        wb = Workbook()
+        ws = wb.active
+        ws.append(PENDING_COLUMNS)
+        for t in pending:
+            row = [t.get(col, "") for col in PENDING_COLUMNS]
+            ws.append(row)
+        wb.save(PENDING_FILE)
+    else:
+        db = _get_mongo_db()
+        # Clear existing pending transactions
+        db.pending.delete_many({})
+        # Insert all pending transactions
+        if pending:
+            docs_to_insert = []
+            for t in pending:
+                docs_to_insert.append({
+                    "_pending_id": t.get("_pending_id", str(uuid.uuid4())),
+                    "date": t.get("date", ""),
+                    "description": t.get("description", ""),
+                    "category": t.get("category", ""),
+                    "debit": float(t.get("debit", 0)),
+                    "credit": float(t.get("credit", 0)),
+                    "balance": float(t.get("balance", 0)),
+                    "is_cash": bool(t.get("is_cash", False)),
+                    "added_at": t.get("added_at", datetime.utcnow().isoformat()),
+                })
+            db.pending.insert_many(docs_to_insert)
 
 
 def clear_pending_transactions():
     """Remove all pending transactions."""
-    if os.path.exists(PENDING_FILE):
-        wb = Workbook()
-        ws = wb.active
-        ws.append(PENDING_COLUMNS)
-        wb.save(PENDING_FILE)
+    if USE_XLSX:
+        if os.path.exists(PENDING_FILE):
+            wb = Workbook()
+            ws = wb.active
+            ws.append(PENDING_COLUMNS)
+            wb.save(PENDING_FILE)
+    else:
+        db = _get_mongo_db()
+        db.pending.delete_many({})
 
         

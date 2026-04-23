@@ -834,9 +834,9 @@
 
 <div class="top-bar">
     <select class="fetch-dropdown" id="fetchPastDateSelect" onchange="handleFetchDateChange(this.value)" title="Fetch past emails">
-        <option value="">📅 Fetch Past Emails</option>
-        <option value="1">Yesterday</option>
-        <option value="2">Day Before</option>
+        <option value="">Fetch Past Emails</option>
+        <option value="1" id="dateOpt1"></option>
+        <option value="2" id="dateOpt2"></option>
     </select>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle Dark/Light Theme">🌙</button>
 </div>
@@ -1222,7 +1222,27 @@ function handleFetchDateChange(daysAgo) {
         document.documentElement.setAttribute('data-theme', 'dark');
         document.getElementById('themeToggle').textContent = '☀️';
     }
+    
+    // Initialize past date dropdown options
+    _initPastDateDropdown();
 })();
+
+function _initPastDateDropdown() {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    
+    for (let i = 1; i <= 2; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        const monthName = months[d.getMonth()];
+        const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
+        
+        const optionText = `${dd} ${monthName} ${yyyy} (${weekday})`;
+        document.getElementById(`dateOpt${i}`).textContent = optionText;
+    }
+}
 
 let selectedFile = null;
 let selectedBank = null;
