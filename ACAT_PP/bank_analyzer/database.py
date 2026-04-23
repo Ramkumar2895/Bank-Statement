@@ -45,6 +45,42 @@ PENDING_COLUMNS = ["_pending_id", "date", "description", "category", "debit", "c
 
 
 # ---------------------------------------------------------------------------
+# XLSX helper utilities
+# ---------------------------------------------------------------------------
+
+def _get_or_create_workbook(filepath: str, columns: list[str]) -> Workbook:
+    """Load an existing workbook or create a new one with the given column headers."""
+    if os.path.exists(filepath):
+        return load_workbook(filepath)
+    wb = Workbook()
+    ws = wb.active
+    ws.append(columns)
+    wb.save(filepath)
+    return wb
+
+
+def _append_row(filepath: str, columns: list[str], doc: dict):
+    """Append a single row to an XLSX file, creating it with headers if needed."""
+    wb = _get_or_create_workbook(filepath, columns)
+    ws = wb.active
+    row = [doc.get(col, "") for col in columns]
+    ws.append(row)
+    wb.save(filepath)
+
+
+def _append_rows(filepath: str, columns: list[str], docs: list[dict]):
+    """Append multiple rows to an XLSX file, creating it with headers if needed."""
+    if not docs:
+        return
+    wb = _get_or_create_workbook(filepath, columns)
+    ws = wb.active
+    for doc in docs:
+        row = [doc.get(col, "") for col in columns]
+        ws.append(row)
+    wb.save(filepath)
+
+
+# ---------------------------------------------------------------------------
 # MongoDB setup
 # ---------------------------------------------------------------------------
 _mongo_client = None
@@ -639,5 +675,3 @@ def clear_pending_transactions():
     else:
         db = _get_mongo_db()
         db.pending.delete_many({})
-
-        
