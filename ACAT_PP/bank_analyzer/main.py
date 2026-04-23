@@ -126,6 +126,12 @@ def _auto_fetch_job():
         logger.error("Auto-fetch error: %s", e)
 
 
+def _keep_alive_job():
+    """Background job: keep the app alive by logging a heartbeat.
+    This prevents Heroku from sleeping the dyno due to inactivity."""
+    logger.info("Keep-alive heartbeat - app is active")
+
+
 def _start_scheduler():
     """Start the background email check scheduler."""
     if scheduler.get_job("email_auto_fetch"):
@@ -134,9 +140,17 @@ def _start_scheduler():
         _auto_fetch_job, "interval", seconds=CHECK_INTERVAL_SECONDS,
         id="email_auto_fetch", replace_existing=True,
     )
+    # Add keep-alive job (pings every 25 minutes to prevent Heroku sleep)
+    if scheduler.get_job("keep_alive"):
+        scheduler.remove_job("keep_alive")
+    scheduler.add_job(
+        _keep_alive_job, "interval", minutes=25,
+        id="keep_alive", replace_existing=True,
+    )
     if not scheduler.running:
         scheduler.start()
     logger.info("Email auto-fetch started (every %ds)", CHECK_INTERVAL_SECONDS)
+    logger.info("Keep-alive job started (every 25 minutes)")
 
 
 @app.on_event("startup")
@@ -161,6 +175,20 @@ os.makedirs(static_dir, exist_ok=True)
 
 templates = Jinja2Templates(directory=templates_dir)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+# =========================================================================
+# Health Check Endpoint - used by external services to keep app awake
+# =========================================================================
+@app.get("/health")
+async def health_check():
+    """Dummy health check endpoint. External services can ping this
+    to keep the app awake on Heroku (or any platform that sleeps inactive apps)."""
+    return JSONResponse({
+        "status": "healthy",
+        "timestamp": datetime.now(IST).isoformat(),
+        "uptime": "active"
+    })
 
 
 @app.get("/", response_class=HTMLResponse)
