@@ -680,10 +680,7 @@
             border-color: #10b981;
             background: rgba(16,185,129,0.06);
         }
-        .past-date-icon {
-            font-size: 1.6em;
-            line-height: 1;
-        }
+
         .past-date-info {
             flex: 1;
         }
@@ -876,25 +873,7 @@
             🔔 <span id="pendingCount">0</span> pending
         </div>
 
-        <!-- Fetch Past Date Cards -->
-        <div id="pastDateCards" class="past-date-cards" style="display:none">
-            <div class="past-date-card" id="dateCard1" onclick="fetchForDate(1)">
-                <div class="past-date-icon">📅</div>
-                <div class="past-date-info">
-                    <div class="past-date-label" id="dateLabel1">Yesterday</div>
-                    <div class="past-date-value" id="dateValue1"></div>
-                </div>
-                <div class="past-date-status" id="dateStatus1"></div>
-            </div>
-            <div class="past-date-card" id="dateCard2" onclick="fetchForDate(2)">
-                <div class="past-date-icon">📅</div>
-                <div class="past-date-info">
-                    <div class="past-date-label" id="dateLabel2">Day Before</div>
-                    <div class="past-date-value" id="dateValue2"></div>
-                </div>
-                <div class="past-date-status" id="dateStatus2"></div>
-            </div>
-        </div>
+
 
         <div id="dashLoading" class="loading"><div class="spinner"></div><p>Loading dashboard...</p></div>
         <div id="dashEmpty" class="dash-empty" style="display:none">
@@ -1774,14 +1753,14 @@ function _getPastDate(daysAgo) {
     };
 }
 
-function _initDateCards() {
-    const d1 = _getPastDate(1);
-    const d2 = _getPastDate(2);
-    document.getElementById('dateValue1').textContent = d1.display + ' (' + d1.weekday + ')';
-    document.getElementById('dateValue2').textContent = d2.display + ' (' + d2.weekday + ')';
-    document.getElementById('dateCard1').dataset.apidate = d1.apiDate;
-    document.getElementById('dateCard2').dataset.apidate = d2.apiDate;
-}
+// function _initDateCards() {
+//     const d1 = _getPastDate(1);
+//     const d2 = _getPastDate(2);
+//     document.getElementById('dateValue1').textContent = d1.display + ' (' + d1.weekday + ')';
+//     document.getElementById('dateValue2').textContent = d2.display + ' (' + d2.weekday + ')';
+//     document.getElementById('dateCard1').dataset.apidate = d1.apiDate;
+//     document.getElementById('dateCard2').dataset.apidate = d2.apiDate;
+// }
 
 async function fetchForDate(idx) {
     const card = document.getElementById('dateCard' + idx);
