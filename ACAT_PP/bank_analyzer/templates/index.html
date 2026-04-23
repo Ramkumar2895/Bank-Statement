@@ -101,7 +101,7 @@
         }
         header p { color: var(--text-muted); font-size: 1.05em; }
 
-        /* Theme Toggle */
+        /* Theme Toggle & Fetch Dropdown */
         .top-bar {
             position: fixed;
             top: 12px;
@@ -111,6 +111,44 @@
             align-items: center;
             gap: 10px;
         }
+        
+        .fetch-dropdown {
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 2px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.3s;
+            box-shadow: var(--shadow);
+            appearance: none;
+            -webkit-appearance: none;
+            padding-right: 30px;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            background-size: 16px;
+        }
+        
+        .fetch-dropdown:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 15px rgba(58,123,213,0.2);
+        }
+        
+        .fetch-dropdown:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-light);
+        }
+        
+        .fetch-dropdown option {
+            background: var(--select-option-bg);
+            color: var(--select-option-color);
+            padding: 8px 0;
+        }
+        
         .theme-toggle {
             width: 44px;
             height: 44px;
@@ -720,7 +758,8 @@
             header { padding: 20px 0 6px; }
             header h1 { font-size: 1.5em; }
 
-            .top-bar { top: 8px; right: 12px; }
+            .top-bar { top: 8px; right: 12px; gap: 8px; }
+            .fetch-dropdown { padding: 7px 10px; font-size: 0.8em; width: 130px; }
             .theme-toggle { width: 38px; height: 38px; font-size: 1.1em; }
 
             .tab-nav { gap: 4px; padding: 4px; margin: 14px auto 20px; }
@@ -794,6 +833,11 @@
 <body>
 
 <div class="top-bar">
+    <select class="fetch-dropdown" id="fetchPastDateSelect" onchange="handleFetchDateChange(this.value)" title="Fetch past emails">
+        <option value="">📅 Fetch Past Emails</option>
+        <option value="1">Yesterday</option>
+        <option value="2">Day Before</option>
+    </select>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle Dark/Light Theme">🌙</button>
 </div>
 
@@ -1121,6 +1165,56 @@ function toggleTheme() {
     if (dashTransactions.length > 0) renderDashCharts(dashTransactions);
     if (allTransactions.length > 0) refreshChartsAndSummary();
 }
+
+// Handle fetch past date dropdown
+function handleFetchDateChange(daysAgo) {
+    if (!daysAgo) return; // Reset to default
+    
+    const daysValue = parseInt(daysAgo);
+    const d = new Date();
+    d.setDate(d.getDate() - daysValue);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+    const targetDate = `${dd}/${mm}/${yy}`;
+    
+    // Show loading state
+    const dropdown = document.getElementById('fetchPastDateSelect');
+    dropdown.disabled = true;
+    const originalText = dropdown.querySelector('option:first-child').textContent;
+    
+    // Call the API
+    fetch('/fetch-for-date', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_date: targetDate }),
+    })
+    .then(resp => resp.json())
+    .then(data => {
+        if (data.success) {
+            if (data.new > 0) {
+                alert(`✅ Success! ${data.new} new transactions fetched for ${targetDate}`);
+                checkPending(); // Refresh pending transactions
+            } else if (data.already_saved > 0) {
+                alert(`ℹ️ All ${data.already_saved} transactions from ${targetDate} already saved.`);
+            } else {
+                alert(`No transactions found for ${targetDate}.`);
+            }
+        } else {
+            alert('❌ Error: ' + (data.message || 'Failed to fetch data'));
+        }
+    })
+    .catch(err => {
+        console.error('Fetch error:', err);
+        alert('❌ Error: ' + err.message);
+    })
+    .finally(() => {
+        // Reset dropdown
+        dropdown.disabled = false;
+        dropdown.value = '';
+    });
+}
+
 // Load saved theme on page load
 (function() {
     const saved = localStorage.getItem('theme');
