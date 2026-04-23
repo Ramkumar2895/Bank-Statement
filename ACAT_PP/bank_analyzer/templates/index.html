@@ -1678,20 +1678,34 @@ async function approveCurrentTxn() {
         const sel = document.querySelector('.notif-cat-select[data-idx="0"]');
         const cat = sel ? sel.value : t.category;
 
-        await fetch('/approve-transaction', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pending_id: t._pending_id, category: cat }),
-        });
+        try {
+            const resp = await fetch('/approve-transaction', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pending_id: t._pending_id, category: cat }),
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                alert('❌ Failed to approve: ' + (data.message || 'Unknown error'));
+                return;
+            }
+        } catch(e) {
+            alert('❌ Error: ' + e.message);
+            return;
+        }
     } else {
         await approveAllPending();
         return;
     }
 
     document.getElementById('txnNotifOverlay').style.display = 'none';
+    // Clear caches and reload
     dashDataCache = null;
-    loadDashboard();
-    checkPending();
+    currentPendingTxns = [];
+    await loadDashboard();
+    await checkPending();
+    // Switch to dashboard tab to show approved data
+    switchTab('dashboard');
 }
 
 async function approveAllPending() {
@@ -1703,17 +1717,29 @@ async function approveAllPending() {
         }
     });
 
-    await fetch('/approve-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates }),
-    });
+    try {
+        const resp = await fetch('/approve-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates }),
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            alert('❌ Failed to approve all: ' + (data.message || 'Unknown error'));
+            return;
+        }
+    } catch(e) {
+        alert('❌ Error: ' + e.message);
+        return;
+    }
 
     document.getElementById('txnNotifOverlay').style.display = 'none';
     currentPendingTxns = [];
     dashDataCache = null;
-    loadDashboard();
-    checkPending();
+    await loadDashboard();
+    await checkPending();
+    // Switch to dashboard tab to show approved data
+    switchTab('dashboard');
 }
 
 async function dismissCurrentTxn() {
