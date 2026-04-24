@@ -159,44 +159,6 @@
             animation: slideInRight 0.5s ease 0.2s both;
         }
         
-        .fetch-dropdown {
-            padding: 10px 16px;
-            border-radius: 12px;
-            border: 1.5px solid var(--border);
-            background: var(--bg-card);
-            color: var(--text-primary);
-            font-size: 0.9em;
-            font-weight: 600;
-            cursor: pointer;
-            outline: none;
-            transition: all 0.3s ease;
-            box-shadow: var(--shadow-sm);
-            appearance: none;
-            -webkit-appearance: none;
-            padding-right: 32px;
-            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23667eea' stroke-width='2.5'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-            background-repeat: no-repeat;
-            background-position: right 10px center;
-            background-size: 16px;
-        }
-        
-        .fetch-dropdown:hover {
-            border-color: var(--accent);
-            box-shadow: 0 8px 20px rgba(102,126,234,0.15);
-            transform: translateY(-2px);
-        }
-        
-        .fetch-dropdown:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 4px var(--accent-light);
-        }
-        
-        .fetch-dropdown option {
-            background: var(--select-option-bg);
-            color: var(--select-option-color);
-            padding: 10px 0;
-        }
-        
         .theme-toggle {
             width: 48px;
             height: 48px;
@@ -2070,11 +2032,6 @@
 <body>
 
 <div class="top-bar">
-    <select class="fetch-dropdown" id="fetchPastDateSelect" onchange="handleFetchDateChange(this.value)" title="Fetch past emails">
-        <option value="">Fetch Past Emails</option>
-        <option value="1" id="dateOpt1"></option>
-        <option value="2" id="dateOpt2"></option>
-    </select>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle Dark/Light Theme">🌙</button>
 </div>
 
@@ -2194,6 +2151,24 @@
                     </thead>
                     <tbody id="dashTxnTable"></tbody>
                 </table>
+            </div>
+
+            <!-- Past Data Section -->
+            <div class="past-data-section">
+                <h3>📅 Past Data</h3>
+                <p>Fetch transactions from previous dates</p>
+                <div class="past-data-buttons">
+                    <button class="btn btn-primary" onclick="fetchPastData(1)" id="pastBtn1">
+                        Yesterday
+                    </button>
+                    <button class="btn btn-primary" onclick="fetchPastData(2)" id="pastBtn2">
+                        2 Days Ago
+                    </button>
+                    <button class="btn btn-secondary" onclick="showPastDatePicker()">
+                        📅 Custom Date
+                    </button>
+                </div>
+                <div id="pastDataStatus" style="display:none; margin-top:16px; padding:14px; border-radius:10px; background:var(--accent-light); color:var(--accent-text); text-align:center; font-weight:600;"></div>
             </div>
         </div>
     </div>
