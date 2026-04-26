@@ -25,8 +25,8 @@ load_dotenv()
 # Otherwise, fall back to XLSX (local/testing)
 # ---------------------------------------------------------------------------
 MONGODB_URI = os.getenv("MONGODB_URI", "").strip()
-USE_XLSX = not MONGODB_URI  # Use MongoDB if URI is provided, else use XLSX
-
+# USE_XLSX = not MONGODB_URI  # Use MongoDB if URI is provided, else use XLSX
+USE_XLSX = False if MONGODB_URI else True
 # Directory where XLSX files are stored (one file per collection)
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -247,46 +247,115 @@ def _extract_name_fragments(description: str) -> list[str]:
     return fragments
 
 
+# def get_all_transactions() -> list[dict]:
+#     """Load all saved transactions from the database."""
+#     transactions = []
+#     if USE_XLSX:
+#         if not os.path.exists(TRANSACTIONS_FILE):
+#             return transactions
+#         wb = load_workbook(TRANSACTIONS_FILE)
+#         ws = wb.active
+#         headers = [cell.value for cell in ws[1]]
+#         for row in ws.iter_rows(min_row=2, values_only=True):
+#             txn = {}
+#             for i, col in enumerate(headers):
+#                 val = row[i]
+#                 if col in ("debit", "credit", "balance"):
+#                     try:
+#                         val = round(float(val or 0), 2)
+#                     except (ValueError, TypeError):
+#                         val = 0.0
+#                 elif col == "is_cash":
+#                     val = str(val).upper() in ("TRUE", "1", "YES") if val else False
+#                 else:
+#                     val = str(val) if val else ""
+#                 txn[col] = val
+#             transactions.append(txn)
+#     else:
+#         db = _get_mongo_db()
+#         for doc in db.transactions.find({}).sort("saved_at", -1):
+#             txn = {
+#                 "_id": str(doc.get("_id", "")),
+#                 "statement_id": str(doc.get("statement_id", "")),
+#                 "date": str(doc.get("date", "")),
+#                 "description": str(doc.get("description", "")),
+#                 "category": str(doc.get("category", "")),
+#                 "debit": round(float(doc.get("debit", 0)), 2),
+#                 "credit": round(float(doc.get("credit", 0)), 2),
+#                 "balance": round(float(doc.get("balance", 0)), 2),
+#                 "is_cash": bool(doc.get("is_cash", False)),
+#                 "saved_at": str(doc.get("saved_at", "")),
+#             }
+#             transactions.append(txn)
+#     return transactions
+
 def get_all_transactions() -> list[dict]:
-    """Load all saved transactions from the database."""
+    """Load all saved transactions from the database (MongoDB or XLSX)."""
     transactions = []
+
     if USE_XLSX:
         if not os.path.exists(TRANSACTIONS_FILE):
             return transactions
+
         wb = load_workbook(TRANSACTIONS_FILE)
         ws = wb.active
         headers = [cell.value for cell in ws[1]]
+
         for row in ws.iter_rows(min_row=2, values_only=True):
             txn = {}
+
             for i, col in enumerate(headers):
                 val = row[i]
+
                 if col in ("debit", "credit", "balance"):
                     try:
                         val = round(float(val or 0), 2)
                     except (ValueError, TypeError):
                         val = 0.0
+
                 elif col == "is_cash":
                     val = str(val).upper() in ("TRUE", "1", "YES") if val else False
+
                 else:
                     val = str(val) if val else ""
+
                 txn[col] = val
+
+            # ✅ Ensure approved_date always exists
+            if "approved_date" not in txn:
+                txn["approved_date"] = txn.get("saved_at", "")
+
             transactions.append(txn)
+
     else:
         db = _get_mongo_db()
-        for doc in db.transactions.find({}).sort("saved_at", -1):
+
+        for doc in db.transactions.find({}).sort("approved_date", -1):
             txn = {
                 "_id": str(doc.get("_id", "")),
                 "statement_id": str(doc.get("statement_id", "")),
                 "date": str(doc.get("date", "")),
                 "description": str(doc.get("description", "")),
                 "category": str(doc.get("category", "")),
+
                 "debit": round(float(doc.get("debit", 0)), 2),
                 "credit": round(float(doc.get("credit", 0)), 2),
                 "balance": round(float(doc.get("balance", 0)), 2),
+
                 "is_cash": bool(doc.get("is_cash", False)),
+
                 "saved_at": str(doc.get("saved_at", "")),
+
+                # ✅ NEW FIELD (CRITICAL)
+                "approved_date": (
+                    doc.get("approved_date").isoformat()
+                    if doc.get("approved_date")
+                    else str(doc.get("saved_at", ""))
+                )
             }
+
             transactions.append(txn)
+
     return transactions
 
 
@@ -426,6 +495,7 @@ def save_transactions(transactions: list[dict], filename: str) -> dict:
             "balance": t["balance"],
             "is_cash": t.get("is_cash", False),
             "saved_at": datetime.utcnow().isoformat(),
+            "approved_date": datetime.now().isoformat(),
         })
 
     if USE_XLSX:

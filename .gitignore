@@ -1,0 +1,49 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+venv/
+env/
+ENV/
+.venv
+
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data directory - use MongoDB in production (MONGODB_URI env var)
+# or local XLSX for development (tracked in git for persistence)
+ACAT_PP/bank_analyzer/data/statements.xlsx
+ACAT_PP/bank_analyzer/data/transactions.xlsx
+ACAT_PP/bank_analyzer/data/pending.xlsx
+# But keep encryption key and allow .gitkeep
+!ACAT_PP/bank_analyzer/data/.gitkeep
+!ACAT_PP/bank_analyzer/data/.encryption.key
